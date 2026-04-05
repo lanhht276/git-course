@@ -3,8 +3,8 @@
   "short_name": "So Sánh Giá",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F5F5",
-  "theme_color": "#FF6B35",
+  "background_color": "#1A1A1A",
+  "theme_color": "#1A1A1A",
   "description": "So sánh giá giữa Co.op Mart, Emart và Big C",
   "icons": [
     {
