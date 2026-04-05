@@ -31,6 +31,9 @@ function updateUI() {
   } else {
     emptyState.classList.add("hidden");
   }
+
+  // Lưu danh sách để không mất khi reload
+  sessionStorage.setItem("shoppingItems", JSON.stringify(items));
 }
 
 function renderItems() {
@@ -89,6 +92,7 @@ itemList.addEventListener("click", (e) => {
 function showResults() {
   inputScreen.classList.add("hidden");
   resultScreen.classList.remove("hidden");
+  history.pushState({ screen: "result" }, "", "#result");
   fetchComparison();
 }
 
@@ -98,8 +102,29 @@ function showInput() {
 }
 
 compareBtn.addEventListener("click", showResults);
-backBtn.addEventListener("click", showInput);
+backBtn.addEventListener("click", () => {
+  history.back();
+});
 retryBtn.addEventListener("click", fetchComparison);
+
+// Handle browser back button
+window.addEventListener("popstate", () => {
+  showInput();
+});
+
+// Restore items from sessionStorage on page load
+(function restoreState() {
+  const saved = sessionStorage.getItem("shoppingItems");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        items = parsed;
+        renderItems();
+      }
+    } catch (e) {}
+  }
+})();
 
 async function fetchComparison() {
   loadingEl.classList.remove("hidden");
