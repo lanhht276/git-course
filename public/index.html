@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="So Sanh Gia">
+  <meta name="apple-mobile-web-app-title" content="So Sánh Giá">
   <meta name="theme-color" content="#FF6B35">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <title>So Sanh Gia Sieu Thi</title>
+  <title>So Sánh Giá Siêu Thị</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -17,7 +17,7 @@
     <!-- Input Screen -->
     <div id="input-screen">
       <div class="header">
-        <h1>So Sanh Gia</h1>
+        <h1>So Sánh Giá</h1>
         <p class="subtitle">Co.op Mart &bull; Emart &bull; Big C</p>
       </div>
 
@@ -25,46 +25,46 @@
         <input
           type="text"
           id="item-input"
-          placeholder="Nhap ten san pham (VD: sua tuoi, gao...)"
+          placeholder="Nhập tên sản phẩm (VD: sữa tươi, gạo...)"
           autocomplete="off"
         >
         <button id="add-btn" class="btn-add">+</button>
       </div>
 
       <div class="list-section">
-        <h3 id="list-title">Danh sach (0 san pham)</h3>
+        <h3 id="list-title">Danh sách (0 sản phẩm)</h3>
         <div id="item-list" class="item-list">
           <div class="empty-state" id="empty-state">
-            Chua co san pham nao.<br>Nhap ten san pham va nhan + de them.
+            Chưa có sản phẩm nào.<br>Nhập tên sản phẩm và nhấn + để thêm.
           </div>
         </div>
       </div>
 
       <button id="compare-btn" class="btn-compare" disabled>
-        So Sanh Gia (0 san pham)
+        So Sánh Giá (0 sản phẩm)
       </button>
     </div>
 
     <!-- Result Screen -->
     <div id="result-screen" class="hidden">
       <div class="result-header">
-        <button id="back-btn" class="btn-back">&larr; Quay lai</button>
-        <h2>Ket Qua So Sanh</h2>
+        <button id="back-btn" class="btn-back">&larr; Quay lại</button>
+        <h2>Kết Quả So Sánh</h2>
       </div>
 
       <div id="loading" class="loading">
         <div class="spinner"></div>
-        <p>Dang tim kiem gia...<br>Vui long doi trong giay lat</p>
+        <p>Đang tìm kiếm giá...<br>Vui lòng đợi trong giây lát</p>
       </div>
 
       <div id="error-view" class="error-view hidden">
         <p id="error-msg"></p>
-        <button id="retry-btn" class="btn-retry">Thu lai</button>
+        <button id="retry-btn" class="btn-retry">Thử lại</button>
       </div>
 
       <div id="results-content" class="hidden">
         <div id="summary-card" class="summary-card"></div>
-        <h3 class="section-title">Chi Tiet Tung San Pham</h3>
+        <h3 class="section-title">Chi Tiết Từng Sản Phẩm</h3>
         <div id="items-detail"></div>
       </div>
     </div>

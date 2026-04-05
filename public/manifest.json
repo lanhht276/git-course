@@ -1,11 +1,11 @@
 {
-  "name": "So Sanh Gia Sieu Thi",
-  "short_name": "So Sanh Gia",
+  "name": "So Sánh Giá Siêu Thị",
+  "short_name": "So Sánh Giá",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F5F5F5",
   "theme_color": "#FF6B35",
-  "description": "So sanh gia giua Co.op Mart, Emart va Big C",
+  "description": "So sánh giá giữa Co.op Mart, Emart và Big C",
   "icons": [
     {
       "src": "/icon-192.png",

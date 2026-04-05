@@ -22,8 +22,8 @@ const itemsDetail = document.getElementById("items-detail");
 // ===== Input Screen Logic =====
 
 function updateUI() {
-  listTitle.textContent = `Danh sach (${items.length} san pham)`;
-  compareBtn.textContent = `So Sanh Gia (${items.length} san pham)`;
+  listTitle.textContent = `Danh sách (${items.length} sản phẩm)`;
+  compareBtn.textContent = `So Sánh Giá (${items.length} sản phẩm)`;
   compareBtn.disabled = items.length === 0;
 
   if (items.length === 0) {
@@ -59,7 +59,7 @@ function addItem() {
     return;
   }
   if (items.includes(trimmed)) {
-    alert("San pham da co trong danh sach");
+    alert("Sản phẩm đã có trong danh sách");
     return;
   }
   items.push(trimmed);
@@ -117,7 +117,7 @@ async function fetchComparison() {
     const data = await res.json();
     renderResults(data);
   } catch (err) {
-    errorMsg.textContent = "Khong the ket noi den server. Vui long thu lai.";
+    errorMsg.textContent = "Không thể kết nối đến server. Vui lòng thử lại.";
     loadingEl.classList.add("hidden");
     errorView.classList.remove("hidden");
   }
@@ -133,8 +133,8 @@ function renderResults(data) {
   const stores = Object.entries(totals.perStore);
 
   summaryCard.innerHTML = `
-    <div class="summary-title">Tong Ket</div>
-    ${cheapest ? `<div class="winner-badge">Re nhat: ${escapeHtml(cheapest)}</div>` : ""}
+    <div class="summary-title">Tổng Kết</div>
+    ${cheapest ? `<div class="winner-badge">Rẻ nhất: ${escapeHtml(cheapest)}</div>` : ""}
     ${stores
       .map(
         ([store, info]) => `
@@ -143,7 +143,7 @@ function renderResults(data) {
         <span class="total-store-name">${escapeHtml(store)}</span>
         <div class="total-right">
           <div class="total-price ${store === cheapest ? "winner-price" : ""}">${formatPrice(info.total)}</div>
-          <div class="total-count">${info.itemsFound}/${info.itemsTotal} san pham</div>
+          <div class="total-count">${info.itemsFound}/${info.itemsTotal} sản phẩm</div>
         </div>
       </div>
     `
@@ -169,7 +169,7 @@ function renderResults(data) {
                 <span class="store-name">${escapeHtml(p.store)}</span>
               </div>
               <div class="price-right">
-                <span class="not-found">Khong tim thay</span>
+                <span class="not-found">Không tìm thấy</span>
               </div>
             </div>`;
           }
@@ -188,7 +188,7 @@ function renderResults(data) {
           </div>`;
         })
         .join("")}
-      ${comp.cheapestStore ? `<div class="cheapest-label">Re nhat tai ${escapeHtml(comp.cheapestStore)}</div>` : ""}
+      ${comp.cheapestStore ? `<div class="cheapest-label">Rẻ nhất tại ${escapeHtml(comp.cheapestStore)}</div>` : ""}
     </div>
   `
       )
@@ -199,7 +199,7 @@ function renderResults(data) {
 
 function formatPrice(price) {
   if (!price) return "---";
-  return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "d";
+  return price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "đ";
 }
 
 function dotClass(store) {

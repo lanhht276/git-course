@@ -176,6 +176,23 @@ async function runTests() {
     partial.body.results.emart.length + partial.body.results.bigc.length;
   assert("Found results by product name", totalPartial > 0, `Found ${totalPartial} items`);
 
+  // --- Test 11: Vietnamese diacritics search ---
+  console.log("\n[11] Vietnamese diacritics search");
+  const vietSearch = await request("GET", "/api/search?keyword=" + encodeURIComponent("sữa tươi"));
+  assert("Status 200", vietSearch.status === 200);
+  assert("Found with diacritics", vietSearch.body.results.coopmart.length > 0, `Got ${vietSearch.body.results.coopmart.length}`);
+
+  // --- Test 12: New products ---
+  console.log("\n[12] New products: thịt heo, rau củ, đường");
+  const newCompare = await request("POST", "/api/compare", {
+    items: ["thit heo", "rau cu", "duong"],
+  });
+  assert("Status 200", newCompare.status === 200);
+  assert("Has 3 comparisons", newCompare.body.comparisons.length === 3);
+  for (const comp of newCompare.body.comparisons) {
+    assert(`'${comp.searchTerm}' found`, !!comp.cheapestStore, `cheapest=${comp.cheapestStore}`);
+  }
+
   // --- Summary ---
   console.log("\n========================================");
   console.log(`  RESULTS: ${passed} passed, ${failed} failed`);
