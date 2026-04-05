@@ -7,7 +7,7 @@ const { searchMock } = require("./scrapers/mockData");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const USE_MOCK = process.env.USE_MOCK === "true";
+const USE_MOCK = process.env.USE_MOCK !== "false";
 
 app.use(cors());
 app.use(express.json());
