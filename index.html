@@ -6,17 +6,17 @@
 <title>Cashback Tracker - Gợi ý thẻ tín dụng</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface-2: #334155;
-    --border: #475569;
-    --text: #f1f5f9;
-    --muted: #94a3b8;
-    --primary: #3b82f6;
-    --primary-hover: #2563eb;
-    --success: #10b981;
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --surface-2: #1f1f1f;
+    --border: #2a2a2a;
+    --text: #f5e9c8;
+    --muted: #8a7f65;
+    --primary: #d4af37;
+    --primary-hover: #f0c850;
+    --success: #d4af37;
     --warning: #f59e0b;
-    --danger: #ef4444;
+    --danger: #b91c1c;
     --gold: #fbbf24;
   }
   * { box-sizing: border-box; }
@@ -87,18 +87,18 @@
   textarea { min-height: 60px; resize: vertical; }
   button.btn {
     background: var(--primary);
-    color: white;
+    color: #0a0a0a;
     border: none;
     padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
   }
   button.btn:hover { background: var(--primary-hover); }
-  button.btn.secondary { background: var(--surface-2); color: var(--text); }
-  button.btn.secondary:hover { background: var(--border); }
-  button.btn.danger { background: var(--danger); }
+  button.btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+  button.btn.secondary:hover { background: var(--border); border-color: var(--primary); }
+  button.btn.danger { background: var(--danger); color: #fff; }
   button.btn.small { padding: 6px 10px; font-size: 12px; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; }
   .row > * { flex: 1; min-width: 140px; }
@@ -181,7 +181,7 @@
         </div>
         <div>
           <label>Số tiền (VNĐ)</label>
-          <input id="rec-amount" type="number" placeholder="500000" />
+          <input id="rec-amount" type="text" inputmode="numeric" placeholder="500.000" oninput="onAmountInput(this)" />
         </div>
       </div>
       <div class="row" style="margin-top: 10px;">
@@ -224,11 +224,11 @@
       <div class="row">
         <div>
           <label>Hạn mức hoàn tiền/tháng (VNĐ, 0 = không giới hạn)</label>
-          <input id="card-cap" type="number" placeholder="0" value="0" />
+          <input id="card-cap" type="text" inputmode="numeric" placeholder="0" value="0" oninput="onAmountInput(this)" />
         </div>
         <div>
           <label>Mức chi tối thiểu/tháng để hưởng (VNĐ)</label>
-          <input id="card-min" type="number" placeholder="0" value="0" />
+          <input id="card-min" type="text" inputmode="numeric" placeholder="0" value="0" oninput="onAmountInput(this)" />
         </div>
       </div>
       <h3 style="margin-top: 16px;">Chương trình hoàn tiền</h3>
@@ -260,7 +260,7 @@
         </div>
         <div>
           <label>Số tiền *</label>
-          <input id="log-amount" type="number" placeholder="150000" />
+          <input id="log-amount" type="text" inputmode="numeric" placeholder="150.000" oninput="onAmountInput(this)" />
         </div>
         <div>
           <label>Thẻ *</label>
@@ -324,6 +324,22 @@ function load() {
 function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function fmt(n) { return (n || 0).toLocaleString('vi-VN') + ' đ'; }
+function parseAmount(s) { return parseFloat(String(s || '').replace(/\D/g, '')) || 0; }
+function fmtInput(n) { return n ? Number(n).toLocaleString('vi-VN') : ''; }
+function onAmountInput(el) {
+  const caret = el.selectionStart;
+  const before = el.value;
+  const digitsBefore = (before.slice(0, caret).match(/\d/g) || []).length;
+  const raw = before.replace(/\D/g, '');
+  const formatted = raw ? Number(raw).toLocaleString('vi-VN') : '';
+  el.value = formatted;
+  let pos = 0, seen = 0;
+  while (pos < formatted.length && seen < digitsBefore) {
+    if (/\d/.test(formatted[pos])) seen++;
+    pos++;
+  }
+  el.setSelectionRange(pos, pos);
+}
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -360,7 +376,7 @@ function addProgramRow(prog = null) {
       </div>
       <div>
         <label>Trần/giao dịch (0 = không)</label>
-        <input class="p-cap" type="number" placeholder="0" value="${prog?.cap || 0}" />
+        <input class="p-cap" type="text" inputmode="numeric" placeholder="0" value="${fmtInput(prog?.cap || 0)}" oninput="onAmountInput(this)" />
       </div>
     </div>
     <div class="row" style="margin-top: 6px;">
@@ -410,7 +426,7 @@ function saveCard() {
     programs.push({
       category,
       rate,
-      cap: parseFloat(p.querySelector('.p-cap').value) || 0,
+      cap: parseAmount(p.querySelector('.p-cap').value),
       keywords: p.querySelector('.p-keywords').value.trim(),
       channel: p.querySelector('.p-channel').value
     });
@@ -419,8 +435,8 @@ function saveCard() {
     id, name,
     bank: document.getElementById('card-bank').value.trim(),
     cycle,
-    monthlyCap: parseFloat(document.getElementById('card-cap').value) || 0,
-    minSpend: parseFloat(document.getElementById('card-min').value) || 0,
+    monthlyCap: parseAmount(document.getElementById('card-cap').value),
+    minSpend: parseAmount(document.getElementById('card-min').value),
     programs
   };
   const idx = state.cards.findIndex(c => c.id === id);
@@ -440,8 +456,8 @@ function editCard(id) {
   document.getElementById('card-name').value = c.name;
   document.getElementById('card-bank').value = c.bank || '';
   document.getElementById('card-cycle').value = c.cycle;
-  document.getElementById('card-cap').value = c.monthlyCap || 0;
-  document.getElementById('card-min').value = c.minSpend || 0;
+  document.getElementById('card-cap').value = fmtInput(c.monthlyCap || 0);
+  document.getElementById('card-min').value = fmtInput(c.minSpend || 0);
   document.getElementById('programs-container').innerHTML = '';
   (c.programs || []).forEach(p => addProgramRow(p));
   if (!(c.programs || []).length) addProgramRow();
@@ -507,7 +523,7 @@ function matchScore(item, program) {
 
 function recommend() {
   const item = document.getElementById('rec-item').value.trim();
-  const amount = parseFloat(document.getElementById('rec-amount').value) || 0;
+  const amount = parseAmount(document.getElementById('rec-amount').value);
   const channel = document.getElementById('rec-channel').value;
   const box = document.getElementById('rec-results');
   if (!item) {
@@ -575,7 +591,7 @@ function renderLogForm() {
 function saveLog() {
   const date = document.getElementById('log-date').value;
   const item = document.getElementById('log-item').value.trim();
-  const amount = parseFloat(document.getElementById('log-amount').value);
+  const amount = parseAmount(document.getElementById('log-amount').value);
   const cardId = document.getElementById('log-card').value;
   const note = document.getElementById('log-note').value.trim();
   if (!date || !item || !amount || !cardId) {
