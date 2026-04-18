@@ -385,6 +385,8 @@ function load() {
 function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function fmt(n) { return (n || 0).toLocaleString('vi-VN') + ' đ'; }
+const REWARD_LABELS = { cashback: '💵 Tiền hoàn', points: '⭐ Điểm thưởng', other: '📦 Khác' };
+function rewardLabel(t) { return REWARD_LABELS[t] || REWARD_LABELS.cashback; }
 function parseAmount(s) { return parseFloat(String(s || '').replace(/\D/g, '')) || 0; }
 function fmtInput(n) { return n ? Number(n).toLocaleString('vi-VN') : ''; }
 function onAmountInput(el) {
@@ -449,6 +451,14 @@ function addProgramRow(prog = null) {
         <input class="p-keywords" placeholder="grab, gojek, be, taxi" value="${prog?.keywords || ''}" />
       </div>
       <div>
+        <label>Loại hình hoàn</label>
+        <select class="p-reward-type">
+          <option value="cashback" ${!prog || prog?.rewardType === 'cashback' ? 'selected' : ''}>💵 Tiền hoàn</option>
+          <option value="points" ${prog?.rewardType === 'points' ? 'selected' : ''}>⭐ Điểm thưởng</option>
+          <option value="other" ${prog?.rewardType === 'other' ? 'selected' : ''}>📦 Khác</option>
+        </select>
+      </div>
+      <div>
         <label>Kênh</label>
         <select class="p-channel">
           <option value="any" ${prog?.channel === 'any' || !prog ? 'selected' : ''}>Bất kỳ</option>
@@ -492,7 +502,8 @@ function saveCard() {
       rate,
       cap: parseAmount(p.querySelector('.p-cap').value),
       keywords: p.querySelector('.p-keywords').value.trim(),
-      channel: p.querySelector('.p-channel').value
+      channel: p.querySelector('.p-channel').value,
+      rewardType: p.querySelector('.p-reward-type').value
     });
   });
   const card = {
@@ -561,7 +572,7 @@ function renderCards() {
       ${(c.programs || []).map(p => `
         <div class="program">
           <div class="program-row">
-            <span><strong>${p.category}</strong> <span class="rate">${p.rate}%</span></span>
+            <span><strong>${p.category}</strong> <span class="rate">${p.rate}%</span> <span class="badge">${rewardLabel(p.rewardType)}</span></span>
             <span class="card-item-cycle">${p.channel === 'any' ? '' : p.channel}</span>
           </div>
           ${p.keywords ? `<div class="card-item-cycle">🏷 ${p.keywords}</div>` : ''}
@@ -630,11 +641,11 @@ function recommend() {
       ${!hasMatch ? '<p class="hint">Dưới đây là tất cả thẻ kèm mức cashback tính theo chương trình có tỷ lệ cao nhất:</p>' : ''}
       ${shown.slice(0, 8).map((c, i) => `
         <div class="recommendation ${i === 0 && hasMatch ? 'top' : ''}">
-          <h4>${i === 0 && hasMatch ? '<span class="crown">👑</span>' : `#${i+1}`} ${c.card.name} <span class="rate">${c.program.rate}%</span></h4>
+          <h4>${i === 0 && hasMatch ? '<span class="crown">👑</span>' : `#${i+1}`} ${c.card.name} <span class="rate">${c.program.rate}%</span> <span class="badge">${rewardLabel(c.program.rewardType)}</span></h4>
           <div class="meta">
             Chương trình: <strong>${c.program.category}</strong>
             ${c.program.channel !== 'any' ? ' · ' + c.program.channel : ''}
-            ${amount > 0 ? ' · Ước hoàn: <span class="rate">' + fmt(c.cashback) + '</span>' : ''}
+            ${amount > 0 ? (c.program.rewardType === 'points' ? ' · Ước điểm: <span class="rate">' + Math.round(c.cashback).toLocaleString('vi-VN') + ' điểm</span>' : ' · Ước hoàn: <span class="rate">' + fmt(c.cashback) + '</span>') : ''}
             ${c.program.cap ? ' · Trần/GD: ' + fmt(c.program.cap) : ''}
           </div>
           <div class="meta">${getCurrentCycleInfo(c.card)}</div>
@@ -832,27 +843,27 @@ function loadSample() {
         id: uid(), name: 'Shinhan PWM', bank: 'Shinhan Bank', cycle: 25,
         monthlyCap: 600000, minSpend: 0,
         programs: [
-          { category: 'Ẩm thực', rate: 6, cap: 100000, keywords: 'nhà hàng, quán ăn, grab food, shopee food, baemin', channel: 'any' },
-          { category: 'Du lịch', rate: 3, cap: 200000, keywords: 'vé máy bay, khách sạn, booking, agoda, traveloka', channel: 'any' },
-          { category: 'Khác', rate: 0.5, cap: 0, keywords: '', channel: 'any' }
+          { category: 'Ẩm thực', rate: 6, cap: 100000, keywords: 'nhà hàng, quán ăn, grab food, shopee food, baemin', channel: 'any', rewardType: 'cashback' },
+          { category: 'Du lịch', rate: 3, cap: 200000, keywords: 'vé máy bay, khách sạn, booking, agoda, traveloka', channel: 'any', rewardType: 'cashback' },
+          { category: 'Khác', rate: 0.5, cap: 0, keywords: '', channel: 'any', rewardType: 'cashback' }
         ]
       },
       {
         id: uid(), name: 'Cashback Plus Visa', bank: 'Techcombank', cycle: 10,
         monthlyCap: 400000, minSpend: 5000000,
         programs: [
-          { category: 'Online', rate: 5, cap: 150000, keywords: 'shopee, lazada, tiki, amazon, online', channel: 'online' },
-          { category: 'Xăng', rate: 3, cap: 100000, keywords: 'xăng, petrolimex, pvoil, petro', channel: 'any' },
-          { category: 'Siêu thị', rate: 2, cap: 100000, keywords: 'coopmart, winmart, bach hoa xanh, siêu thị, bigc', channel: 'offline' }
+          { category: 'Online', rate: 5, cap: 150000, keywords: 'shopee, lazada, tiki, amazon, online', channel: 'online', rewardType: 'cashback' },
+          { category: 'Xăng', rate: 3, cap: 100000, keywords: 'xăng, petrolimex, pvoil, petro', channel: 'any', rewardType: 'cashback' },
+          { category: 'Siêu thị', rate: 2, cap: 100000, keywords: 'coopmart, winmart, bach hoa xanh, siêu thị, bigc', channel: 'offline', rewardType: 'cashback' }
         ]
       },
       {
         id: uid(), name: 'VPBank Lady', bank: 'VPBank', cycle: 5,
         monthlyCap: 800000, minSpend: 3000000,
         programs: [
-          { category: 'Di chuyển', rate: 10, cap: 50000, keywords: 'grab, gojek, be, taxi, xanh sm', channel: 'any' },
-          { category: 'Làm đẹp', rate: 8, cap: 200000, keywords: 'spa, salon, mỹ phẩm, guardian, watson', channel: 'any' },
-          { category: 'Mặc định', rate: 0.3, cap: 0, keywords: '', channel: 'any' }
+          { category: 'Di chuyển', rate: 10, cap: 50000, keywords: 'grab, gojek, be, taxi, xanh sm', channel: 'any', rewardType: 'points' },
+          { category: 'Làm đẹp', rate: 8, cap: 200000, keywords: 'spa, salon, mỹ phẩm, guardian, watson', channel: 'any', rewardType: 'points' },
+          { category: 'Mặc định', rate: 0.3, cap: 0, keywords: '', channel: 'any', rewardType: 'points' }
         ]
       }
     ],
