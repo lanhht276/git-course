@@ -165,6 +165,7 @@
   <button data-view="recommend" class="active">🎯 Gợi ý thẻ</button>
   <button data-view="cards">💳 Thẻ của tôi</button>
   <button data-view="log">📝 Nhật ký chi tiêu</button>
+  <button data-view="ocr">📷 Quét hóa đơn</button>
   <button data-view="stats">📊 Thống kê tháng</button>
   <button data-view="data">⚙️ Dữ liệu</button>
 </nav>
@@ -283,6 +284,31 @@
     </div>
   </section>
 
+  <!-- OCR -->
+  <section id="view-ocr" class="view">
+    <div class="card">
+      <h2>📷 Quét lịch sử giao dịch từ ảnh</h2>
+      <p class="hint">Chụp / upload ảnh lịch sử giao dịch từ app ngân hàng, SMS, hoặc sao kê. App tự OCR + trích ngày & số tiền. Bạn review lại rồi bấm Import.</p>
+      <div class="row">
+        <div style="flex: 2;">
+          <label>Chọn ảnh (nhiều ảnh cũng được)</label>
+          <input id="ocr-file" type="file" accept="image/*" multiple capture="environment" />
+        </div>
+        <div>
+          <label>Thẻ mặc định cho giao dịch mới</label>
+          <select id="ocr-default-card"></select>
+        </div>
+      </div>
+      <div class="actions" style="margin-top: 12px;">
+        <button class="btn" onclick="runOcr()">🔍 Quét ảnh</button>
+        <button class="btn secondary" onclick="clearOcr()">Xóa kết quả</button>
+      </div>
+      <div id="ocr-progress" class="hint" style="margin-top: 10px;"></div>
+      <p class="hint" style="margin-top: 8px;">⚠️ Lần đầu sẽ tải ~10MB OCR engine (tiếng Việt + English). Các lần sau cache lại nhanh hơn.</p>
+    </div>
+    <div id="ocr-results"></div>
+  </section>
+
   <!-- STATS -->
   <section id="view-stats" class="view">
     <div class="card">
@@ -356,6 +382,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
     if (btn.dataset.view === 'cards') renderCards();
     if (btn.dataset.view === 'log') renderLogForm();
+    if (btn.dataset.view === 'ocr') renderOcrCardSelect();
     if (btn.dataset.view === 'stats') renderStats();
   });
 });
@@ -792,6 +819,185 @@ function loadSample() {
   save();
   renderCards();
   toast('Đã nạp 3 thẻ mẫu ✓');
+}
+
+// ==================== OCR ====================
+let _tesseractReady = null;
+let ocrDraft = [];
+
+function loadTesseract() {
+  if (_tesseractReady) return _tesseractReady;
+  _tesseractReady = new Promise((resolve, reject) => {
+    if (window.Tesseract) return resolve();
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Không tải được Tesseract.js (cần internet)'));
+    document.head.appendChild(s);
+  });
+  return _tesseractReady;
+}
+
+function renderOcrCardSelect() {
+  const sel = document.getElementById('ocr-default-card');
+  sel.innerHTML = state.cards.length
+    ? state.cards.map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+    : '<option value="">(chưa có thẻ — thêm thẻ trước)</option>';
+}
+
+function clearOcr() {
+  document.getElementById('ocr-file').value = '';
+  document.getElementById('ocr-progress').textContent = '';
+  document.getElementById('ocr-results').innerHTML = '';
+  ocrDraft = [];
+}
+
+async function runOcr() {
+  const files = document.getElementById('ocr-file').files;
+  if (!files.length) { toast('Chưa chọn ảnh', true); return; }
+  if (!state.cards.length) { toast('Thêm thẻ trước khi import', true); return; }
+  const prog = document.getElementById('ocr-progress');
+  prog.textContent = 'Đang tải OCR engine...';
+  try {
+    await loadTesseract();
+  } catch (e) { toast(e.message, true); prog.textContent = ''; return; }
+
+  ocrDraft = [];
+  const defaultCard = document.getElementById('ocr-default-card').value;
+  for (let i = 0; i < files.length; i++) {
+    prog.textContent = `Đang đọc ảnh ${i+1}/${files.length}...`;
+    try {
+      const { data } = await Tesseract.recognize(files[i], 'vie+eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            prog.textContent = `Ảnh ${i+1}/${files.length}: ${Math.round(m.progress * 100)}%`;
+          } else if (m.status) {
+            prog.textContent = `Ảnh ${i+1}/${files.length}: ${m.status}...`;
+          }
+        }
+      });
+      const txs = parseTransactions(data.text).map(t => ({ ...t, cardId: defaultCard, include: true, source: files[i].name, rawText: data.text }));
+      ocrDraft.push(...txs);
+    } catch (e) {
+      toast('Lỗi OCR: ' + e.message, true);
+    }
+  }
+  prog.textContent = `Xong! Tìm thấy ${ocrDraft.length} dòng có số tiền.`;
+  renderOcrDraft();
+}
+
+function parseTransactions(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const txs = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const dateRe = /\b(\d{1,2})[\/\-\.](\d{1,2})(?:[\/\-\.](\d{2,4}))?\b/;
+  const amountRe = /(?:^|\s)([+\-]?\s*\d{1,3}(?:[.,\s]\d{3})+|\d{4,})(?:\s*(?:đ|vnđ|vnd|₫|d))?\b/i;
+  let lastDate = today;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const dm = line.match(dateRe);
+    if (dm) {
+      let [, d, m, y] = dm;
+      if (!y) y = new Date().getFullYear();
+      else if (y.length === 2) y = '20' + y;
+      const iso = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if (iso >= '2000-01-01' && iso <= '2099-12-31') lastDate = iso;
+    }
+    const am = line.match(amountRe);
+    if (am) {
+      const raw = am[1].replace(/[^\d]/g, '');
+      const amount = parseInt(raw, 10);
+      if (amount >= 1000 && amount <= 1e10) {
+        let item = line
+          .replace(amountRe, ' ')
+          .replace(dateRe, ' ')
+          .replace(/[+\-]?\s*(đ|vnđ|vnd|₫)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!item && i > 0) item = lines[i-1].replace(dateRe, '').trim();
+        if (!item) item = 'Giao dịch';
+        if (item.length > 80) item = item.slice(0, 80);
+        txs.push({ date: lastDate, item, amount });
+      }
+    }
+  }
+  return dedupeTxs(txs);
+}
+
+function dedupeTxs(txs) {
+  const seen = new Set();
+  return txs.filter(t => {
+    const k = `${t.date}|${t.amount}|${t.item.toLowerCase().slice(0,30)}`;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+}
+
+function renderOcrDraft() {
+  const box = document.getElementById('ocr-results');
+  if (!ocrDraft.length) {
+    box.innerHTML = '<div class="card empty">Không tìm thấy dòng giao dịch nào. Ảnh có thể bị mờ hoặc layout phức tạp.</div>';
+    return;
+  }
+  const cardOpts = state.cards.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  box.innerHTML = `
+    <div class="card">
+      <h2>Review trước khi import (${ocrDraft.length} dòng)</h2>
+      <p class="hint">Bỏ tick các dòng sai, sửa thông tin nếu cần, chọn thẻ, rồi bấm Import.</p>
+      <div class="actions" style="margin-bottom: 10px;">
+        <button class="btn secondary small" onclick="toggleAllOcr(true)">Chọn hết</button>
+        <button class="btn secondary small" onclick="toggleAllOcr(false)">Bỏ chọn hết</button>
+        <button class="btn secondary small" onclick="showRawOcr()">Xem text gốc</button>
+      </div>
+      <table>
+        <thead><tr><th></th><th>Ngày</th><th>Món</th><th style="text-align:right">Số tiền</th><th>Thẻ</th></tr></thead>
+        <tbody>
+          ${ocrDraft.map((t, i) => `
+            <tr>
+              <td><input type="checkbox" ${t.include ? 'checked' : ''} onchange="ocrDraft[${i}].include=this.checked" /></td>
+              <td><input type="date" value="${t.date}" onchange="ocrDraft[${i}].date=this.value" style="min-width:140px" /></td>
+              <td><input value="${t.item.replace(/"/g,'&quot;')}" oninput="ocrDraft[${i}].item=this.value" /></td>
+              <td style="text-align:right"><input type="text" inputmode="numeric" value="${fmtInput(t.amount)}" oninput="onAmountInput(this); ocrDraft[${i}].amount=parseAmount(this.value)" style="text-align:right" /></td>
+              <td><select onchange="ocrDraft[${i}].cardId=this.value" style="min-width:140px">${cardOpts.replace(`value="${t.cardId}"`, `value="${t.cardId}" selected`)}</select></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="actions" style="margin-top: 14px;">
+        <button class="btn" onclick="importOcrDraft()">➕ Import các dòng đã chọn</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleAllOcr(v) {
+  ocrDraft.forEach(t => t.include = v);
+  renderOcrDraft();
+}
+
+function showRawOcr() {
+  const texts = [...new Set(ocrDraft.map(t => t.rawText))];
+  alert(texts.join('\n---\n'));
+}
+
+function importOcrDraft() {
+  const picked = ocrDraft.filter(t => t.include && t.date && t.item && t.amount && t.cardId);
+  if (!picked.length) { toast('Không có dòng hợp lệ để import', true); return; }
+  for (const t of picked) {
+    state.logs.push({
+      id: uid(),
+      date: t.date,
+      item: t.item,
+      amount: t.amount,
+      cardId: t.cardId,
+      note: 'OCR'
+    });
+  }
+  save();
+  toast(`Đã import ${picked.length} giao dịch ✓`);
+  ocrDraft = [];
+  clearOcr();
 }
 
 // ==================== INIT ====================
