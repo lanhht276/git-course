@@ -37,3 +37,26 @@ Hiển thị tổng chi tiêu của **chu kỳ sao kê hiện tại** cho từng
 
 ### ⚙️ Dữ liệu
 Xuất/nhập JSON, nạp dữ liệu mẫu (3 thẻ) hoặc xóa toàn bộ.
+
+### 👤 Tài khoản (Supabase sync — tùy chọn)
+Đăng ký / đăng nhập để sync dữ liệu lên cloud và dùng trên nhiều thiết bị.
+
+## Setup Supabase (chỉ cần 1 lần, ~5 phút)
+
+1. Tạo project miễn phí tại [supabase.com](https://supabase.com) (free tier: 500MB DB, 50k user/tháng).
+2. Mở **SQL Editor** → **New query** → dán toàn bộ nội dung file `supabase-schema.sql` → **Run**.
+3. Vào **Settings → API**, copy:
+   - **Project URL** (dạng `https://xxxxx.supabase.co`)
+   - **anon public key** (bắt đầu bằng `eyJ…`)
+4. Mở app → tab **👤 Tài khoản** → dán 2 giá trị trên → **Lưu & kết nối**.
+5. Tạo tài khoản (đăng ký bằng email + password) → đăng nhập → dữ liệu tự sync.
+
+### Các lựa chọn auth nâng cao (Supabase Dashboard)
+- **Authentication → Providers**: bật Google / GitHub / magic link nếu muốn.
+- **Authentication → Email Templates**: tắt email xác nhận trong giai đoạn dev (Settings → Email Auth → *Confirm email* = off).
+- **Database → Policies**: kiểm tra đã có policy `cards_owner_all` và `logs_owner_all` (schema SQL đã tạo sẵn).
+
+### Lưu ý bảo mật
+- **anon key là public** (an toàn để lộ) — bảo mật dựa vào Row Level Security (RLS) đã bật trong schema.
+- **Không bao giờ commit `service_role` key** lên repo — key đó bypass RLS.
+- Nếu deploy công khai, bạn có thể hardcode URL + anon key vào `index.html` (phần `initSupabase`) để user không cần nhập.

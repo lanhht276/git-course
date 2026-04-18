@@ -154,18 +154,48 @@
     z-index: 100;
   }
   .toast.show { opacity: 1; }
+  .toast.error { background: var(--danger); }
+  .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .user-pill {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .user-pill.online { border-color: var(--success); color: var(--success); }
+  .auth-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .auth-tabs button {
+    background: transparent; border: none; color: var(--muted);
+    padding: 10px 16px; font-size: 14px; cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .auth-tabs button.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .auth-form { max-width: 420px; }
+  .sync-status { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .sync-status.syncing { color: var(--warning); }
+  .sync-status.synced { color: var(--success); }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <header>
-  <h1>💳 Cashback Tracker</h1>
-  <p>Quản lý chương trình hoàn tiền & gợi ý thẻ tối ưu cho mỗi giao dịch</p>
+  <div class="header-row">
+    <div>
+      <h1>💳 Cashback Tracker</h1>
+      <p>Quản lý chương trình hoàn tiền & gợi ý thẻ tối ưu cho mỗi giao dịch<span id="sync-status" class="sync-status"></span></p>
+    </div>
+    <div id="user-pill" class="user-pill">Chưa đăng nhập</div>
+  </div>
 </header>
 <nav>
   <button data-view="recommend" class="active">🎯 Gợi ý thẻ</button>
   <button data-view="cards">💳 Thẻ của tôi</button>
   <button data-view="log">📝 Nhật ký chi tiêu</button>
   <button data-view="stats">📊 Thống kê tháng</button>
+  <button data-view="account">👤 Tài khoản</button>
   <button data-view="data">⚙️ Dữ liệu</button>
 </nav>
 
@@ -292,6 +322,11 @@
     </div>
   </section>
 
+  <!-- ACCOUNT -->
+  <section id="view-account" class="view">
+    <div id="account-content"></div>
+  </section>
+
   <!-- DATA -->
   <section id="view-data" class="view">
     <div class="card">
@@ -324,11 +359,12 @@ function load() {
 function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function fmt(n) { return (n || 0).toLocaleString('vi-VN') + ' đ'; }
-function toast(msg) {
+function toast(msg, isError = false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  t.classList.toggle('error', !!isError);
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
+  setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 // ==================== NAV ====================
@@ -341,6 +377,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.view === 'cards') renderCards();
     if (btn.dataset.view === 'log') renderLogForm();
     if (btn.dataset.view === 'stats') renderStats();
+    if (btn.dataset.view === 'account') renderAccount();
   });
 });
 
@@ -430,6 +467,7 @@ function saveCard() {
   resetCardForm();
   renderCards();
   toast('Đã lưu thẻ ✓');
+  cloudPushCard(card);
 }
 
 function editCard(id) {
@@ -454,6 +492,7 @@ function deleteCard(id) {
   save();
   renderCards();
   toast('Đã xóa');
+  cloudDeleteCard(id);
 }
 
 function renderCards() {
@@ -582,19 +621,22 @@ function saveLog() {
     toast('Vui lòng nhập đủ thông tin');
     return;
   }
-  state.logs.push({ id: uid(), date, item, amount, cardId, note });
+  const entry = { id: uid(), date, item, amount, cardId, note };
+  state.logs.push(entry);
   save();
   document.getElementById('log-item').value = '';
   document.getElementById('log-amount').value = '';
   document.getElementById('log-note').value = '';
   renderLogs();
   toast('Đã ghi ✓');
+  cloudPushLog(entry);
 }
 
 function deleteLog(id) {
   state.logs = state.logs.filter(l => l.id !== id);
   save();
   renderLogs();
+  cloudDeleteLog(id);
 }
 
 function renderLogs() {
@@ -778,10 +820,285 @@ function loadSample() {
   toast('Đã nạp 3 thẻ mẫu ✓');
 }
 
+// ==================== SUPABASE (AUTH + SYNC) ====================
+const SB_CONFIG_KEY = 'cashback_tracker_sb_config_v1';
+let sb = null;
+let currentUser = null;
+let authTab = 'signin';
+
+function getSbConfig() {
+  try { return JSON.parse(localStorage.getItem(SB_CONFIG_KEY) || 'null'); }
+  catch { return null; }
+}
+function setSbConfig(cfg) { localStorage.setItem(SB_CONFIG_KEY, JSON.stringify(cfg)); }
+function clearSbConfig() { localStorage.removeItem(SB_CONFIG_KEY); }
+
+function setSyncStatus(text, cls = '') {
+  const el = document.getElementById('sync-status');
+  el.textContent = text ? ' · ' + text : '';
+  el.className = 'sync-status ' + cls;
+}
+function setUserPill() {
+  const pill = document.getElementById('user-pill');
+  if (currentUser) {
+    pill.textContent = '☁️ ' + (currentUser.email || 'đã đăng nhập');
+    pill.classList.add('online');
+  } else {
+    pill.textContent = getSbConfig() ? 'Chưa đăng nhập' : 'Offline (chỉ lưu máy này)';
+    pill.classList.remove('online');
+  }
+}
+
+async function initSupabase() {
+  const cfg = getSbConfig();
+  setUserPill();
+  if (!cfg?.url || !cfg?.key || typeof supabase === 'undefined') return;
+  try {
+    sb = supabase.createClient(cfg.url, cfg.key, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+    const { data } = await sb.auth.getSession();
+    if (data?.session?.user) {
+      currentUser = data.session.user;
+      setUserPill();
+      await cloudPullAll();
+    }
+    sb.auth.onAuthStateChange(async (_e, session) => {
+      currentUser = session?.user || null;
+      setUserPill();
+      renderAccount();
+      if (currentUser) await cloudPullAll();
+    });
+  } catch (e) {
+    console.error('Supabase init failed', e);
+    toast('Lỗi kết nối Supabase: ' + e.message, true);
+  }
+}
+
+function mapCardToDb(c) {
+  return {
+    id: c.id, name: c.name, bank: c.bank || null, cycle: c.cycle,
+    monthly_cap: c.monthlyCap || 0, min_spend: c.minSpend || 0,
+    programs: c.programs || []
+  };
+}
+function mapCardFromDb(r) {
+  return {
+    id: r.id, name: r.name, bank: r.bank || '', cycle: r.cycle,
+    monthlyCap: Number(r.monthly_cap) || 0, minSpend: Number(r.min_spend) || 0,
+    programs: r.programs || []
+  };
+}
+function mapLogToDb(l) {
+  return { id: l.id, date: l.date, item: l.item, amount: l.amount, card_id: l.cardId, note: l.note || null };
+}
+function mapLogFromDb(r) {
+  return { id: r.id, date: r.date, item: r.item, amount: Number(r.amount), cardId: r.card_id, note: r.note || '' };
+}
+
+async function cloudPullAll() {
+  if (!sb || !currentUser) return;
+  setSyncStatus('đang tải...', 'syncing');
+  try {
+    const [cardsRes, logsRes] = await Promise.all([
+      sb.from('cards').select('*'),
+      sb.from('logs').select('*').order('date', { ascending: false })
+    ]);
+    if (cardsRes.error) throw cardsRes.error;
+    if (logsRes.error) throw logsRes.error;
+    state.cards = cardsRes.data.map(mapCardFromDb);
+    state.logs = logsRes.data.map(mapLogFromDb);
+    save();
+    renderCards();
+    if (document.getElementById('view-log').classList.contains('active')) renderLogs();
+    if (document.getElementById('view-stats').classList.contains('active')) renderStats();
+    setSyncStatus('đã đồng bộ', 'synced');
+  } catch (e) {
+    setSyncStatus('lỗi sync', '');
+    toast('Lỗi sync: ' + e.message, true);
+  }
+}
+
+async function cloudPushCard(card) {
+  if (!sb || !currentUser) return;
+  setSyncStatus('đang lưu...', 'syncing');
+  const { error } = await sb.from('cards').upsert({ ...mapCardToDb(card), user_id: currentUser.id });
+  if (error) { toast('Lỗi sync thẻ: ' + error.message, true); setSyncStatus('lỗi', ''); }
+  else setSyncStatus('đã đồng bộ', 'synced');
+}
+async function cloudDeleteCard(id) {
+  if (!sb || !currentUser) return;
+  const { error } = await sb.from('cards').delete().eq('id', id);
+  if (error) toast('Lỗi xóa thẻ cloud: ' + error.message, true);
+}
+async function cloudPushLog(log) {
+  if (!sb || !currentUser) return;
+  setSyncStatus('đang lưu...', 'syncing');
+  const { error } = await sb.from('logs').upsert({ ...mapLogToDb(log), user_id: currentUser.id });
+  if (error) { toast('Lỗi sync giao dịch: ' + error.message, true); setSyncStatus('lỗi', ''); }
+  else setSyncStatus('đã đồng bộ', 'synced');
+}
+async function cloudDeleteLog(id) {
+  if (!sb || !currentUser) return;
+  const { error } = await sb.from('logs').delete().eq('id', id);
+  if (error) toast('Lỗi xóa giao dịch cloud: ' + error.message, true);
+}
+
+async function cloudUploadLocal() {
+  if (!sb || !currentUser) return;
+  if (!state.cards.length && !state.logs.length) { toast('Không có dữ liệu local để upload'); return; }
+  if (!confirm(`Upload ${state.cards.length} thẻ và ${state.logs.length} giao dịch lên cloud?`)) return;
+  setSyncStatus('đang upload...', 'syncing');
+  try {
+    if (state.cards.length) {
+      const rows = state.cards.map(c => ({ ...mapCardToDb(c), user_id: currentUser.id }));
+      const { error } = await sb.from('cards').upsert(rows);
+      if (error) throw error;
+    }
+    if (state.logs.length) {
+      const rows = state.logs.map(l => ({ ...mapLogToDb(l), user_id: currentUser.id }));
+      const { error } = await sb.from('logs').upsert(rows);
+      if (error) throw error;
+    }
+    setSyncStatus('đã đồng bộ', 'synced');
+    toast('Upload xong ✓');
+    renderAccount();
+  } catch (e) {
+    setSyncStatus('lỗi', '');
+    toast('Lỗi upload: ' + e.message, true);
+  }
+}
+
+async function authSignUp(email, password) {
+  if (!sb) return;
+  const { error } = await sb.auth.signUp({ email, password });
+  if (error) { toast('Lỗi đăng ký: ' + error.message, true); return; }
+  toast('Đăng ký thành công! Check email để xác nhận (nếu bật).');
+  renderAccount();
+}
+async function authSignIn(email, password) {
+  if (!sb) return;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { toast('Lỗi đăng nhập: ' + error.message, true); return; }
+  toast('Đã đăng nhập ✓');
+}
+async function authSignOut() {
+  if (!sb) return;
+  await sb.auth.signOut();
+  toast('Đã đăng xuất');
+  setSyncStatus('');
+}
+async function authReset(email) {
+  if (!sb) return;
+  const { error } = await sb.auth.resetPasswordForEmail(email);
+  if (error) { toast('Lỗi: ' + error.message, true); return; }
+  toast('Đã gửi email reset mật khẩu');
+}
+
+function saveConfigForm() {
+  const url = document.getElementById('sb-url').value.trim();
+  const key = document.getElementById('sb-key').value.trim();
+  if (!url || !key) { toast('Nhập đủ URL và anon key', true); return; }
+  setSbConfig({ url, key });
+  toast('Đã lưu. Đang kết nối...');
+  setTimeout(() => location.reload(), 500);
+}
+
+async function disconnectSupabase() {
+  if (!confirm('Ngắt kết nối Supabase? Dữ liệu cloud không mất, chỉ quay về chế độ offline.')) return;
+  if (sb && currentUser) await sb.auth.signOut();
+  clearSbConfig();
+  location.reload();
+}
+
+function renderAccount() {
+  const box = document.getElementById('account-content');
+  const cfg = getSbConfig();
+  if (!cfg) {
+    box.innerHTML = `
+      <div class="card">
+        <h2>Kết nối Supabase để sync đa thiết bị</h2>
+        <p class="hint">
+          1. Tạo project miễn phí ở <a href="https://supabase.com" target="_blank" style="color: var(--primary)">supabase.com</a><br/>
+          2. Vào <strong>SQL Editor</strong> → chạy file <code>supabase-schema.sql</code> (có trong repo)<br/>
+          3. Vào <strong>Settings → API</strong> → copy <strong>Project URL</strong> và <strong>anon public key</strong><br/>
+          4. Dán vào form dưới đây:
+        </p>
+        <div class="auth-form">
+          <label>Project URL</label>
+          <input id="sb-url" placeholder="https://xxxxx.supabase.co" />
+          <label>Anon public key</label>
+          <input id="sb-key" placeholder="eyJhbGc..." />
+          <div class="actions" style="margin-top: 12px;">
+            <button class="btn" onclick="saveConfigForm()">Lưu & kết nối</button>
+          </div>
+          <p class="hint">Anon key là public key — an toàn khi để trên client, RLS ở Supabase lo bảo mật.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  if (!currentUser) {
+    box.innerHTML = `
+      <div class="card">
+        <h2>Tài khoản</h2>
+        <div class="auth-tabs">
+          <button class="${authTab === 'signin' ? 'active' : ''}" onclick="authTab='signin';renderAccount()">Đăng nhập</button>
+          <button class="${authTab === 'signup' ? 'active' : ''}" onclick="authTab='signup';renderAccount()">Đăng ký</button>
+          <button class="${authTab === 'reset' ? 'active' : ''}" onclick="authTab='reset';renderAccount()">Quên mật khẩu</button>
+        </div>
+        <div class="auth-form">
+          <label>Email</label>
+          <input id="auth-email" type="email" placeholder="you@example.com" />
+          ${authTab !== 'reset' ? `
+            <label>Mật khẩu</label>
+            <input id="auth-password" type="password" placeholder="Tối thiểu 6 ký tự" />
+          ` : ''}
+          <div class="actions" style="margin-top: 12px;">
+            ${authTab === 'signin' ? '<button class="btn" onclick="doSignIn()">Đăng nhập</button>' : ''}
+            ${authTab === 'signup' ? '<button class="btn" onclick="doSignUp()">Đăng ký</button>' : ''}
+            ${authTab === 'reset' ? '<button class="btn" onclick="doReset()">Gửi email reset</button>' : ''}
+            <button class="btn secondary" onclick="disconnectSupabase()">Ngắt kết nối Supabase</button>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  box.innerHTML = `
+    <div class="card">
+      <h2>Xin chào, ${currentUser.email || 'user'} 👋</h2>
+      <p class="hint">User ID: <code>${currentUser.id}</code></p>
+      <p>Dữ liệu đang được sync lên Supabase. Đăng nhập trên máy khác sẽ thấy cùng dữ liệu.</p>
+      <div class="stat-row">
+        <span>Số thẻ</span><span class="stat-amount">${state.cards.length}</span>
+      </div>
+      <div class="stat-row">
+        <span>Số giao dịch</span><span class="stat-amount">${state.logs.length}</span>
+      </div>
+      <div class="actions" style="margin-top: 16px;">
+        <button class="btn secondary" onclick="cloudPullAll()">🔄 Tải lại từ cloud</button>
+        <button class="btn secondary" onclick="cloudUploadLocal()">⬆️ Upload dữ liệu local</button>
+        <button class="btn danger" onclick="authSignOut()">Đăng xuất</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Ngắt kết nối Supabase</h3>
+      <p class="hint">Quay về chế độ offline (chỉ lưu trên máy này). Không xóa dữ liệu trên cloud.</p>
+      <button class="btn secondary" onclick="disconnectSupabase()">Ngắt kết nối</button>
+    </div>
+  `;
+}
+
+function doSignIn() { authSignIn(document.getElementById('auth-email').value.trim(), document.getElementById('auth-password').value); }
+function doSignUp() { authSignUp(document.getElementById('auth-email').value.trim(), document.getElementById('auth-password').value); }
+function doReset() { authReset(document.getElementById('auth-email').value.trim()); }
+
 // ==================== INIT ====================
 load();
 addProgramRow();
 renderCards();
+initSupabase();
 </script>
 </body>
 </html>
